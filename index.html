@@ -9,6 +9,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="312">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@400;500;600;700&display=swap">
@@ -276,7 +279,7 @@ function weekOf(dt){return Math.floor((dayStart(dt)-startDate())/864e5/7)+1}
 function mondayOf(w){const d=startDate();d.setDate(d.getDate()+(w-1)*7);return d}
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
 
-const now=new Date();
+let now=new Date();
 let todayW=weekOf(now), todayD=(now.getDay()+6)%7; // 0=Mon..6=Sun
 let week=todayW, day=todayD;
 if(day===6){week++;day=0}
@@ -384,7 +387,37 @@ function applyStart(v){startISO=v;store.set("start",v);todayW=weekOf(now);week=t
 $("saveSt").onclick=()=>{const v=$("startDate").value;if(v){const [y,mo,dd]=v.split("-").map(Number);const d=new Date(y,mo-1,dd);const m=(d.getDay()+6)%7;d.setDate(d.getDate()-m);applyStart(iso(d))}closeSheet()};
 $("resetSt").onclick=()=>{applyStart(DEFAULT_START);closeSheet()};
 
+// auto-update: follow the clock (current pair, new day) while the app stays open
+function tick(){
+  const prevW=todayW,prevD=todayD;
+  const wasToday=(week===prevW&&day===prevD)||(prevD===6&&week===clampWeek(prevW+1)&&day===0);
+  now=new Date();todayW=weekOf(now);todayD=(now.getDay()+6)%7;
+  if(wasToday&&(todayW!==prevW||todayD!==prevD)){week=todayW;day=todayD;if(day===6){week++;day=0}week=clampWeek(week)}
+  if($("sheet").hidden)render();
+}
+setInterval(tick,30000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)tick()});
+window.addEventListener("focus",tick);
+// self-update: when the page comes back to the foreground, compare with the published file and reload if it changed
+const APP_VERSION="2026-10-27-4";
+let lastCheck=0;
+async function checkUpdate(){
+  if(location.protocol!=="https:"||Date.now()-lastCheck<20000)return;
+  lastCheck=Date.now();
+  try{
+    const r=await fetch(location.pathname+"?v="+Date.now(),{cache:"no-store"});
+    if(!r.ok)return;
+    const m=(await r.text()).match(/APP_VERSION="([^"]+)"/);
+    if(m&&m[1]!==APP_VERSION)location.reload();
+  }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkUpdate()});
+window.addEventListener("pageshow",checkUpdate);
+setInterval(checkUpdate,10*60000);
+// offline: service worker caches the app (works on GitHub Pages)
+if("serviceWorker" in navigator&&location.protocol==="https:"){try{navigator.serviceWorker.register("sw.js").catch(()=>{})}catch(e){}}
 render();
+if(navigator.onLine!==false)checkUpdate();
 })();
 </script>
 </body>
